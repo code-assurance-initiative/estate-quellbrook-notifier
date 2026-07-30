@@ -1,0 +1,124 @@
+using System.Text;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using NSubstitute;
+using Quellbrook.Notifier.Messaging;
+using Quellbrook.Notifier.UnitTests.TestSupport;
+using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
+
+namespace Quellbrook.Notifier.UnitTests.Messaging;
+
+public sealed class InboxTests : IDisposable
+{
+    internal const string OrderPlaced = """
+        {"orderId":"0198f1a2-0000-7000-8000-000000000042","customerAccountId":"QB-104233","serviceLevel":"standard",
+         "consignee":{"name":"Maja Holm","address":{"line1":"Søndergade 12","postalCode":"8000","city":"Aarhus C","countryCode":"DK"},
+                      "contact":{"email":"maja.holm@post.example","phone":"+4520304050"}},
+         "parcels":[{"number":1,"weightGrams":2400,"lengthCm":40,"widthCm":30,"heightCm":20}],"placedAt":"2026-08-03T06:00:00+00:00"}
+        """;
+
+    private readonly TestDb _db = new();
+
+    private InboxProcessor Inbox() => new(_db.Services.GetRequiredService<IServiceScopeFactory>(), _db.Time, NullLogger<InboxProcessor>.Instance);
+
+    [Fact]
+    public async Task AnOrderIsConfirmedOnceEvenWhenTheMessageIsRedelivered()
+    {
+        var messageId = Guid.NewGuid();
+
+        var first = await Inbox().ProcessAsync(messageId, OrderPlacedMessage.EventType, Encoding.UTF8.GetBytes(OrderPlaced), TestContext.Current.CancellationToken);
+        var again = await Inbox().ProcessAsync(messageId, OrderPlacedMessage.EventType, Encoding.UTF8.GetBytes(OrderPlaced), TestContext.Current.CancellationToken);
+
+        Assert.Equal(InboxOutcome.Processed, first);
+        Assert.Equal(InboxOutcome.Duplicate, again);
+        var sent = Assert.Single(_db.Email.Sent);
+        Assert.Equal("maja.holm@post.example", sent.To);
+        Assert.Contains("is booked", sent.Subject, StringComparison.Ordinal);
+        using var context = _db.Context();
+        var log = await context.NotificationLog.SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(("OrderConfirmed", "email", "m***@post.example"), (log.Kind, log.Channel, log.MaskedRecipient));
+        Assert.Equal("Maja Holm", (await context.Recipients.SingleAsync(TestContext.Current.CancellationToken)).Name);
+    }
+
+    [Fact]
+    public async Task TheSameOrderAnnouncedUnderANewMessageIdIsNotConfirmedTwice()
+    {
+        await Inbox().ProcessAsync(Guid.NewGuid(), OrderPlacedMessage.EventType, Encoding.UTF8.GetBytes(OrderPlaced), TestContext.Current.CancellationToken);
+        await Inbox().ProcessAsync(Guid.NewGuid(), OrderPlacedMessage.EventType, Encoding.UTF8.GetBytes(OrderPlaced), TestContext.Current.CancellationToken);
+
+        Assert.Single(_db.Email.Sent);
+    }
+
+    [Fact]
+    public async Task AFailedSendLeavesNoTraceSoTheRedeliveryTriesAgain()
+    {
+        _db.Email.Fail = true;
+
+        await Assert.ThrowsAsync<Quellbrook.Notifier.Channels.ProviderException>(() =>
+            Inbox().ProcessAsync(Guid.NewGuid(), OrderPlacedMessage.EventType, Encoding.UTF8.GetBytes(OrderPlaced), TestContext.Current.CancellationToken));
+
+        using var context = _db.Context();
+        Assert.Empty(context.ProcessedMessages);
+        Assert.Empty(context.Recipients);
+    }
+
+    [Fact]
+    public async Task AConsigneeWithoutAnEmailAddressGetsNoEmail()
+    {
+        var withoutEmail = OrderPlaced.Replace("\"email\":\"maja.holm@post.example\",", "", StringComparison.Ordinal);
+
+        await Inbox().ProcessAsync(Guid.NewGuid(), OrderPlacedMessage.EventType, Encoding.UTF8.GetBytes(withoutEmail), TestContext.Current.CancellationToken);
+
+        Assert.Empty(_db.Email.Sent);
+    }
+
+    [Fact]
+    public async Task AnUnknownEventTypeIsIgnored() =>
+        Assert.Equal(InboxOutcome.Ignored, await Inbox().ProcessAsync(Guid.NewGuid(), "orders.order-archived.v1", "{}"u8.ToArray(), TestContext.Current.CancellationToken));
+
+    [Fact]
+    public async Task TheConsumerAcknowledgesProcessedMessagesAndDeadLettersTheRest()
+    {
+        var channel = Substitute.For<IChannel>();
+        var consumer = new EventsConsumer(Substitute.For<IRabbitMqConnectionProvider>(), Inbox(), Options.Create(new RabbitMqOptions()), NullLogger<EventsConsumer>.Instance);
+
+        await consumer.HandleAsync(channel, Delivery(Guid.NewGuid().ToString(), OrderPlaced), TestContext.Current.CancellationToken);
+        await consumer.HandleAsync(channel, Delivery(null, OrderPlaced), TestContext.Current.CancellationToken);
+        await consumer.HandleAsync(channel, Delivery(Guid.NewGuid().ToString(), "not json"), TestContext.Current.CancellationToken);
+
+        await channel.Received(1).BasicAckAsync(7, false, Arg.Any<CancellationToken>());
+        await channel.Received(2).BasicNackAsync(7, false, false, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task TheConsumerDeclaresItsQueueWithDeadLetteringAndBindsItsEvents()
+    {
+        var channel = Substitute.For<IChannel>();
+        var connection = Substitute.For<IConnection>();
+        connection.CreateChannelAsync(Arg.Any<CreateChannelOptions?>(), Arg.Any<CancellationToken>()).Returns(channel);
+        var connections = Substitute.For<IRabbitMqConnectionProvider>();
+        connections.GetConnectionAsync(Arg.Any<CancellationToken>()).Returns(connection);
+        var consumer = new EventsConsumer(connections, Inbox(), Options.Create(new RabbitMqOptions { Exchange = "quellbrook.events" }), NullLogger<EventsConsumer>.Instance);
+
+        await consumer.StartAsync(TestContext.Current.CancellationToken);
+        await consumer.StopAsync(TestContext.Current.CancellationToken);
+
+        await channel.Received(1).QueueDeclareAsync(
+            EventsConsumer.QueueName, Arg.Is(true), Arg.Is(false), Arg.Is(false),
+            Arg.Is<IDictionary<string, object?>>(arguments => (string?)arguments["x-dead-letter-exchange"] == EventsConsumer.DeadLetterExchange),
+            Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        foreach (var routingKey in EventsConsumer.RoutingKeys)
+        {
+            await channel.Received(1).QueueBindAsync(EventsConsumer.QueueName, "quellbrook.events", routingKey,
+                Arg.Any<IDictionary<string, object?>?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        }
+    }
+
+    private static BasicDeliverEventArgs Delivery(string? messageId, string body) =>
+        new("consumer", 7, false, "quellbrook.events", OrderPlacedMessage.EventType, new BasicProperties { MessageId = messageId }, Encoding.UTF8.GetBytes(body));
+
+    public void Dispose() => _db.Dispose();
+}
