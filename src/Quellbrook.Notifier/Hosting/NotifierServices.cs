@@ -33,6 +33,10 @@ public static class NotifierServices
         services.AddHttpClient<IEmailSender, EmailSender>((provider, http) =>
                 http.BaseAddress = provider.GetRequiredService<IOptions<EmailProviderOptions>>().Value.BaseAddress)
             .AddStandardResilienceHandler();
+        services.AddOptions<SmsProviderOptions>().BindConfiguration(SmsProviderOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+        services.AddHttpClient<ISmsSender, SmsSender>((provider, http) =>
+                http.BaseAddress = provider.GetRequiredService<IOptions<SmsProviderOptions>>().Value.BaseAddress)
+            .AddStandardResilienceHandler();
 
         services.AddScoped<NotificationService>();
         services.AddScoped<OrderPlacedHandler>();

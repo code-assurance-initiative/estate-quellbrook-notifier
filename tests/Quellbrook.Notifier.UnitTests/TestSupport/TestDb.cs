@@ -31,6 +31,7 @@ internal sealed class TestDb : IDisposable
             .AddScoped(_ => Context())
             .AddSingleton<TimeProvider>(Time)
             .AddSingleton<IEmailSender>(Email)
+            .AddSingleton<ISmsSender>(Sms)
             .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
             .AddScoped<NotificationService>()
             .AddScoped<OrderPlacedHandler>()
@@ -40,6 +41,8 @@ internal sealed class TestDb : IDisposable
     public FakeTimeProvider Time { get; } = new(Now);
 
     public RecordingEmailSender Email { get; } = new();
+
+    public RecordingSmsSender Sms { get; } = new();
 
     public ServiceProvider Services { get; }
 
@@ -84,6 +87,17 @@ internal sealed class RecordingEmailSender : IEmailSender
             throw new ProviderException("provider unavailable");
         }
 
+        Sent.Add(message);
+        return Task.CompletedTask;
+    }
+}
+
+internal sealed class RecordingSmsSender : ISmsSender
+{
+    public List<SmsMessage> Sent { get; } = [];
+
+    public Task SendAsync(SmsMessage message, CancellationToken cancellationToken)
+    {
         Sent.Add(message);
         return Task.CompletedTask;
     }
