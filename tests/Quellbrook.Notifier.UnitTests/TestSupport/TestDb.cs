@@ -35,6 +35,7 @@ internal sealed class TestDb : IDisposable
             .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
             .AddScoped<NotificationService>()
             .AddScoped<OrderPlacedHandler>()
+            .AddScoped<DeliveryHandlers>()
             .BuildServiceProvider();
     }
 

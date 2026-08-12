@@ -12,3 +12,15 @@ public sealed record OrderPlacedMessage(Guid OrderId, OrderPlacedMessage.Consign
 
     public sealed record ContactPart(string? Email, string? Phone);
 }
+
+/// <summary>The notifier's copy of <c>dispatch.consignment-out-for-delivery.v1</c>.</summary>
+public sealed record ConsignmentOutForDeliveryMessage(Guid ConsignmentId, Guid OrderId, DateTimeOffset OutForDeliveryAt)
+{
+    public const string EventType = "dispatch.consignment-out-for-delivery.v1";
+}
+
+/// <summary>The notifier's copy of <c>dispatch.consignment-delivered.v1</c>.</summary>
+public sealed record ConsignmentDeliveredMessage(Guid ConsignmentId, Guid OrderId, string Proof, DateTimeOffset DeliveredAt)
+{
+    public const string EventType = "dispatch.consignment-delivered.v1";
+}

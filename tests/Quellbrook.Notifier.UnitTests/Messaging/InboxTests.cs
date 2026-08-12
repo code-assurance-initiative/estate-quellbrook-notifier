@@ -76,6 +76,40 @@ public sealed class InboxTests : IDisposable
     }
 
     [Fact]
+    public async Task OnTheDeliveryDayTheConsigneeGetsAnSmsAndAnEmailAndAfterwardsADeliveryEmail()
+    {
+        await Inbox().ProcessAsync(Guid.NewGuid(), OrderPlacedMessage.EventType, Encoding.UTF8.GetBytes(OrderPlaced), TestContext.Current.CancellationToken);
+        const string orderId = "0198f1a2-0000-7000-8000-000000000042";
+        var outForDelivery = $$"""{"consignmentId":"{{Guid.NewGuid()}}","orderId":"{{orderId}}","routeId":"{{Guid.NewGuid()}}","outForDeliveryAt":"2026-08-03T07:00:00+00:00"}""";
+        var delivered = $$"""{"consignmentId":"{{Guid.NewGuid()}}","orderId":"{{orderId}}","proof":"signature","deliveredAt":"2026-08-03T11:30:00+00:00"}""";
+
+        await Inbox().ProcessAsync(Guid.NewGuid(), ConsignmentOutForDeliveryMessage.EventType, Encoding.UTF8.GetBytes(outForDelivery), TestContext.Current.CancellationToken);
+        await Inbox().ProcessAsync(Guid.NewGuid(), ConsignmentDeliveredMessage.EventType, Encoding.UTF8.GetBytes(delivered), TestContext.Current.CancellationToken);
+
+        Assert.Collection(
+            _db.Email.Sent,
+            mail => Assert.EndsWith("is booked", mail.Subject, StringComparison.Ordinal),
+            mail => Assert.EndsWith("arrives today", mail.Subject, StringComparison.Ordinal),
+            mail => Assert.EndsWith("has been delivered", mail.Subject, StringComparison.Ordinal));
+        var sms = Assert.Single(_db.Sms.Sent);
+        Assert.Equal("+4520304050", sms.To);
+        using var context = _db.Context();
+        Assert.Equal(new DateTimeOffset(2026, 8, 3, 11, 30, 0, TimeSpan.Zero), (await context.Recipients.SingleAsync(TestContext.Current.CancellationToken)).CompletedAt);
+        Assert.Equal(4, await context.NotificationLog.CountAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task ADeliveryEventForAnUnknownOrderSendsNothing()
+    {
+        var delivered = $$"""{"consignmentId":"{{Guid.NewGuid()}}","orderId":"{{Guid.NewGuid()}}","proof":"photo","deliveredAt":"2026-08-03T11:30:00+00:00"}""";
+
+        var outcome = await Inbox().ProcessAsync(Guid.NewGuid(), ConsignmentDeliveredMessage.EventType, Encoding.UTF8.GetBytes(delivered), TestContext.Current.CancellationToken);
+
+        Assert.Equal(InboxOutcome.Processed, outcome);
+        Assert.Empty(_db.Email.Sent);
+    }
+
+    [Fact]
     public async Task AnUnknownEventTypeIsIgnored() =>
         Assert.Equal(InboxOutcome.Ignored, await Inbox().ProcessAsync(Guid.NewGuid(), "orders.order-archived.v1", "{}"u8.ToArray(), TestContext.Current.CancellationToken));
 

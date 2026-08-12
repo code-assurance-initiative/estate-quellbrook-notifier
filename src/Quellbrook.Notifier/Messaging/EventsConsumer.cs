@@ -20,7 +20,12 @@ public sealed partial class EventsConsumer(
     public const string QueueName = "notifier.events";
     public const string DeadLetterExchange = "quellbrook.dead-letter";
 
-    public static readonly IReadOnlyList<string> RoutingKeys = ["orders.order-placed.v1"];
+    public static readonly IReadOnlyList<string> RoutingKeys =
+    [
+        "orders.order-placed.v1",
+        "dispatch.consignment-out-for-delivery.v1",
+        "dispatch.consignment-delivered.v1",
+    ];
 
     public async Task HandleAsync(IChannel channel, BasicDeliverEventArgs delivery, CancellationToken cancellationToken)
     {

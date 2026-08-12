@@ -40,6 +40,7 @@ public static class NotifierServices
 
         services.AddScoped<NotificationService>();
         services.AddScoped<OrderPlacedHandler>();
+        services.AddScoped<DeliveryHandlers>();
 
         services.AddHealthChecks().AddDbContextCheck<NotifierDbContext>("database");
         services.AddOptions<HeartbeatOptions>().BindConfiguration(HeartbeatOptions.SectionName);

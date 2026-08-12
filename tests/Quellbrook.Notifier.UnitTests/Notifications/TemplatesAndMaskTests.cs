@@ -13,11 +13,25 @@ public sealed class TemplatesAndMaskTests
     [Fact]
     public void TheConfirmationGreetsTheConsigneeAndNamesTheReference()
     {
-        var (subject, body) = NotificationTemplates.Email(NotificationKind.OrderConfirmed, "Maja Holm", OrderId);
+        var (subject, body) = NotificationTemplates.Email(NotificationKind.OrderConfirmed, "Maja Holm", OrderId) ?? default;
 
         Assert.Equal("Your Quellbrook delivery 0198F1A2 is booked", subject);
         Assert.StartsWith("Hello Maja Holm,", body, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void OnlyTheDeliveryDayMessageHasAnSms()
+    {
+        Assert.Contains("0198F1A2", NotificationTemplates.Sms(NotificationKind.OutForDelivery, OrderId), StringComparison.Ordinal);
+        Assert.Null(NotificationTemplates.Sms(NotificationKind.OrderConfirmed, OrderId));
+        Assert.Null(NotificationTemplates.Sms(NotificationKind.Delivered, OrderId));
+    }
+
+    [Theory]
+    [InlineData(NotificationKind.OutForDelivery, "arrives today")]
+    [InlineData(NotificationKind.Delivered, "has been delivered")]
+    public void EveryKindHasAnEmail(NotificationKind kind, string subjectEnding) =>
+        Assert.EndsWith(subjectEnding, NotificationTemplates.Email(kind, "Maja Holm", OrderId)?.Subject, StringComparison.Ordinal);
 
     [Theory]
     [InlineData("maja.holm@post.example", "m***@post.example")]
