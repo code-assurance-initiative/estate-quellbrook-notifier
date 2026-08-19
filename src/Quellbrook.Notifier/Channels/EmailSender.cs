@@ -31,9 +31,9 @@ public sealed partial class EmailSender(HttpClient http, IOptions<EmailProviderO
         }
 
         var providerId = response.Headers.TryGetValues("X-Message-Id", out var ids) ? ids.FirstOrDefault() : null;
-        LogAccepted(message.OrderId, providerId ?? "unknown");
+        LogAccepted(message.OrderId, message.To, providerId ?? "unknown");
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "E-mail for order {OrderId} accepted by the provider ({ProviderMessageId})")]
-    private partial void LogAccepted(Guid orderId, string providerMessageId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "E-mail for order {OrderId} accepted by the provider for {Recipient} ({ProviderMessageId})")]
+    private partial void LogAccepted(Guid orderId, string recipient, string providerMessageId);
 }
