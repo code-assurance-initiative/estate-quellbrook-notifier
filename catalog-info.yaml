@@ -13,7 +13,9 @@ spec:
   system: quellbrook-operations
   consumesApis:
     - quellbrook-orders-events
+    - quellbrook-dispatch-events
   dependsOn:
     - resource:quellbrook-notifier-db
     - resource:quellbrook-event-broker
     - resource:email-provider
+    - resource:sms-gateway
