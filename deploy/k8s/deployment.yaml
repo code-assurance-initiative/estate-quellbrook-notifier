@@ -66,6 +66,16 @@ spec:
                 secretKeyRef:
                   name: quellbrook-notifier-broker
                   key: password
+            - name: EmailProvider__ApiKey
+              valueFrom:
+                secretKeyRef:
+                  name: quellbrook-notifier-providers
+                  key: email-api-key
+            - name: SmsProvider__ApiKey
+              valueFrom:
+                secretKeyRef:
+                  name: quellbrook-notifier-providers
+                  key: sms-api-key
           # The heartbeat file is rewritten after every health-check round that is not Unhealthy (every 30 s).
           readinessProbe:
             exec:
