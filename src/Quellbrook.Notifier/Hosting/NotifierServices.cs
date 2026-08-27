@@ -9,6 +9,7 @@ using Quellbrook.Notifier.Channels;
 using Quellbrook.Notifier.Messaging;
 using Quellbrook.Notifier.Notifications;
 using Quellbrook.Notifier.Persistence;
+using Quellbrook.Notifier.Retention;
 using RabbitMQ.Client;
 
 namespace Quellbrook.Notifier.Hosting;
@@ -41,6 +42,9 @@ public static class NotifierServices
         services.AddScoped<NotificationService>();
         services.AddScoped<OrderPlacedHandler>();
         services.AddScoped<DeliveryHandlers>();
+
+        services.AddOptions<RetentionOptions>().BindConfiguration(RetentionOptions.SectionName).ValidateDataAnnotations().ValidateOnStart();
+        services.AddHostedService<RetentionSweeper>();
 
         services.AddHealthChecks().AddDbContextCheck<NotifierDbContext>("database");
         services.AddOptions<HeartbeatOptions>().BindConfiguration(HeartbeatOptions.SectionName);
