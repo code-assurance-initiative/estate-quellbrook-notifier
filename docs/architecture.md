@@ -49,9 +49,11 @@ C4Container
 | `Notifications/` | the handlers per event, the notification service and log, templates, contact masking |
 | `Channels/` | the provider clients behind `IEmailSender` and `ISmsSender` (resilience: timeouts, retries, circuit breaker) |
 | `Persistence/` | EF Core context and migrations |
+| `Retention/` | the hourly sweeper that deletes contact details, log entries and message ids after their retention |
 | `Hosting/` | service registration, OpenTelemetry, the heartbeat the probes read |
 
-The worker serves no HTTP. Kubernetes reads its health from a heartbeat file (`/tmp/heartbeat`) that is rewritten
+The schemas of the consumed events are pinned under `contracts/consumed/` (`contracts/asyncapi.yaml`). The worker
+serves no HTTP. Kubernetes reads its health from a heartbeat file (`/tmp/heartbeat`) that is rewritten
 after each health-check round.
 
 ## Message contracts
