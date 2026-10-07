@@ -55,3 +55,17 @@
   value from the published commit `a033c7c` (present in every full clone) and substitutes it before applying. Verified
   by rebuilding into a fresh directory: HEAD and the three tags match. No file under `benchmark/` contains the key.
 - Key changes: trap TRP-007.
+
+## 2026-10-07 — scan iteration 2 (final) and freeze
+
+- Pushed: main fast-forwarded from the key-first commit to `614f388` (no force push), plus tags `v0.1.0` … `v0.3.0`.
+  GitHub accepted the push of the history that contains the planted key (push protection is off for this
+  organisation's benchmark repositories, as the coordinator arranged).
+- Contained pass at `614f388`: 9 results. NTF-001 found again (D28, `appsettings.json:15` @ `a033c7c`); NTF-002
+  missed; the D8 row of iteration 1 is gone; TRP-005 (D17) and TRP-007 (C4 "missing expiry limit / scheduled purge")
+  caught; the rest is the recorded noise of iteration 1.
+- Model-judged host pass at `614f388`: D19 90, D20 73, D21 100, M4 100. The host has no gitleaks, so the history
+  secret is not seen there (NTF-001 is a contained-mode finding). New row: D20 "ADR 0001 documents a meta-process" —
+  **opinion-not-fact** (the conventional first ADR) → trap TRP-008, added with this entry (key only; the code is
+  unchanged since the scans).
+- Converged: two plants (one found), eight traps, recorded noise only. Frozen as v1.0.0 with this entry.
