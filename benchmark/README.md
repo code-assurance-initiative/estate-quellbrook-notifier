@@ -51,23 +51,24 @@ The key stays readable in the history (NTF-001, with its commit). The commits ar
 
 | Id | Concept | Site | Why |
 |---|---|---|---|
-| NTF-001 | `secret-in-version-history` | `src/Quellbrook.Notifier/appsettings.json:14` | In sprint 2 the email provider's API key (the provider's real key format) was committed in the worker's appsettings.json to get the staging environment sending. It was found by the provider's leaked-key alert in sprint 3, revoked and replaced, and removed from the file the same day (docs/incidents/2026-08-25-email-provider-key.md). The working tree is clean; the key is still readable in the commit that added it. A scanner cannot know that it was revoked: reporting a credential in history is correct, and the team must confirm the revocation. Lines refer to the file as it was in that commit. |
-| NTF-002 | `sensitive-data-in-logs` | `src/Quellbrook.Notifier/Channels/EmailSender.cs:50-52` | After the provider accepts a message the email sender logs the recipient's full e-mail address at Information level. Information logs are shipped to the shared log platform and kept there for 30 days, longer than the notifier keeps the address itself; the address adds nothing a support engineer needs beyond the order id and message id that are logged with it. The SMS sender (TRP-002) shows the intended pattern. |
+| NTF-001 | `secret-in-version-history` | `src/Quellbrook.Notifier/appsettings.json:15 @ `a033c7cf647a`` | In sprint 2 the email provider's API key (the provider's real key format) was committed in the worker's appsettings.json to get the staging environment sending. It was found by the provider's leaked-key alert in sprint 3, revoked and replaced, and removed from the file the same day (docs/incidents/2026-08-25-email-provider-key.md). The working tree is clean; the key is still readable in the commit that added it. A scanner cannot know that it was revoked: reporting a credential in history is correct, and the team must confirm the revocation. Lines refer to the file as it was in that commit. |
+| NTF-002 | `sensitive-data-in-logs` | `src/Quellbrook.Notifier/Channels/EmailSender.cs:34-38` | After the provider accepts a message the e-mail sender logs the recipient's full e-mail address at Information level (added in sprint 2 to chase staging bounces and never removed). Information logs are shipped to the shared log platform and kept there for 30 days, longer than the notifier keeps the address itself; the address adds nothing a support engineer needs beyond the order id and message id that are logged with it. The SMS sender (TRP-002) shows the intended pattern. |
 
 ## Traps (`must-not-fire`)
 
 | Id | Concept | Site | Why |
 |---|---|---|---|
-| TRP-001 | `hardcoded-credential` | `src/Quellbrook.Notifier/appsettings.json:14` | The provider key's place in appsettings.json is an empty string: the value is supplied at run time from a Kubernetes Secret (EmailProvider__ApiKey), and the options validation refuses to start without it. |
-| TRP-002 | `sensitive-data-in-logs` | `src/Quellbrook.Notifier/Channels/SmsSender.cs:45-47` | The SMS sender logs the destination number only through ContactMask.Phone (country code and last two digits); no personal data reaches the log. |
-| TRP-003 | `hardcoded-credential` | `deploy/k8s/deployment.yaml:50-70` | Provider keys, database and broker credentials are read from Kubernetes Secrets (secretKeyRef) that an ExternalSecret materialises from the secret store. |
-| TRP-004 | `non-idempotent-message-handler` | `src/Quellbrook.Notifier/Messaging/InboxProcessor.cs:25-60` | Every message is processed inside one transaction that first records its message id in the inbox and skips a message id already seen; sending is recorded in the notification log before the provider call is repeated, so a redelivered message sends nothing twice. |
+| TRP-001 | `hardcoded-credential` | `src/Quellbrook.Notifier/appsettings.json:15` | The provider key's place in appsettings.json is an empty string: the value is supplied at run time from a Kubernetes Secret (EmailProvider__ApiKey), and the options validation refuses to start without it. |
+| TRP-002 | `sensitive-data-in-logs` | `src/Quellbrook.Notifier/Channels/SmsSender.cs:26-31` | The SMS sender logs the destination number only through ContactMask.Phone (country code and last two digits); no personal data reaches the log. |
+| TRP-003 | `hardcoded-credential` | `deploy/k8s/deployment.yaml:69-78` | Provider keys, database and broker credentials are read from Kubernetes Secrets (secretKeyRef) that an ExternalSecret materialises from the secret store. |
+| TRP-004 | `non-idempotent-message-handler` | `src/Quellbrook.Notifier/Messaging/InboxProcessor.cs:25-44` | Every message is processed inside one transaction that first records its message id in the inbox and skips a message id already seen; sending is recorded in the notification log before the provider call is repeated, so a redelivered message sends nothing twice. |
 | TRP-005 | `suppressed-diagnostic` | `.editorconfig:36-37` | CA2007 is switched off at the root for tests with its reason on the line above, and src/.editorconfig switches it back on for production code. |
-| TRP-006 | `hardcoded-credential` | `tests/Quellbrook.Notifier.UnitTests/Channels/EmailSenderTests.cs:15` | The unit tests configure the provider clients with a fixed, obviously fake key against an in-process stub handler; it reaches no network and authenticates nothing. |
+| TRP-007 | `data-retention-policy` | `(repository)` | Retention is declared and enforced: RetentionOptions gives each kind of stored data its maximum age (30 days after delivery for contact details, 60 days without delivery, 90 days for the notification log, 30 days for message ids) and RetentionSweeper deletes expired rows every hour (docs/privacy.md). A report of a missing expiry limit or scheduled purge is wrong. Repository-level: such a report has no site. |
+| TRP-006 | `hardcoded-credential` | `tests/Quellbrook.Notifier.UnitTests/Channels/EmailSenderTests.cs:11` | The unit tests configure the provider clients with a fixed, obviously fake key against an in-process stub handler; it reaches no network and authenticates nothing. |
 
 ## Certified clean
 
-Every tracked file will carry a `clean` entry, generated from the file list once the code exists: files without a label clean for every concept, labelled files for every finding concept except the labelled ones.
+109 `clean` entries, one per tracked file: files without a label are certified clean for every concept (`"*"`); a file that carries a plant or a trap is certified clean for every finding concept except the labelled ones and the concepts a result of those labels would restate.
 
 ## Not applicable
 
@@ -84,6 +85,7 @@ Every tracked file will carry a `clean` entry, generated from the file list once
 - `cross-site-scripting` — E-mails are plain text; no HTML is rendered from message data.
 - `missing-authorization` — The worker exposes no endpoint; it consumes messages from the broker.
 - `security-response-headers` — The worker serves no HTTP.
+- `https-enforcement` — The worker serves no HTTP; its outbound calls to the providers are HTTPS.
 - `nondeterministic-event-fold` — No event-sourced aggregate.
 
 ## Score bands
@@ -125,6 +127,6 @@ Bands were set from the intent of the code, before any scan, and are wide where 
 | BND-031 | `outbound-http-resilience` | 70–100 | Both provider clients use the standard resilience handler (timeouts, retries, circuit breaker). |
 | BND-032 | `versioned-schema-migrations` | 80–100 | EF Core migrations, one per schema change. |
 | BND-033 | `data-retention-policy` | 50–100 | Recipient contact data is deleted 30 days after delivery or cancellation, notification log rows after 90 days, by a scheduled sweeper; docs/privacy.md. |
-| BND-034 | `audit-trail` | 10–80 | A notification log records what was sent, when and through which channel, with masked recipients. |
+| BND-034 | `audit-trail` | 0–80 | A notification log records what was sent, when and through which channel, with masked recipients; no audit of data changes. |
 | BND-035 | `data-subject-rights` | 0–70 | Erasure happens by retention; no on-request erasure operation in the worker. |
 | BND-036 | `data-encryption-controls` | 0–70 | TLS to the providers, database and broker; encryption at rest by the platform. |
