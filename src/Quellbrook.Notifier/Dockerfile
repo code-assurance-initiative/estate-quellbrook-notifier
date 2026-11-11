@@ -14,7 +14,7 @@ RUN dotnet restore src/Quellbrook.Notifier/Quellbrook.Notifier.csproj --locked-m
 COPY src/ src/
 RUN dotnet publish src/Quellbrook.Notifier/Quellbrook.Notifier.csproj -c Release --no-restore -o /app
 
-FROM mcr.microsoft.com/dotnet/runtime:10.0@sha256:b89586dc17781f25531909993658aa8161205ae38b8cec8847df4a8221a403d5 AS runtime
+FROM mcr.microsoft.com/dotnet/runtime:11.0@sha256:3fe5f5495141c97986a49d3a4e76061f6225c3f93f94e8a7e522781376193863 AS runtime
 WORKDIR /app
 COPY --from=build /app ./
 # An unprivileged UID above any host account range, by number so the kubelet can verify runAsNonRoot.
